@@ -8,8 +8,8 @@
     "start": "node build.js"
   },
   "devDependencies": {
-    "esbuild": "^0.11.13"    
+    "esbuild": "^0.11.13",
+    "webpack-glsl-minify": "^1.4.2"
   },
-  "dependencies": {
-  }
+  "dependencies": {}
 }

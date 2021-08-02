@@ -1,83 +1,68 @@
 //@ts-check  
 
-import { createBuffer, compileProgram, createShader, uniforms, draw, createTexture, useGL } from "./gllib"
+import { gl, glFramebuffer, glCompile, glShader, glUniforms, glBindTextures, glTexture, glContext, TRIANGLES, glDrawQuad } from "./gllib"
+import shaders from "./shaders"
 
-const canvasWidth = 1900, canvasHeight = 960;
+const canvasWidth = 800, canvasHeight = 800;
 
-import simplex from "./simplex.glsl"
+C.width = canvasWidth;
+C.height = canvasHeight;
 
-console.log(simplex);
+glContext(C);
 
-function main() {
+gl.getExtension('EXT_color_buffer_float');
 
-  let gl: WebGLRenderingContext = (document.getElementById("C") as HTMLCanvasElement).getContext("webgl2");
+const vFullScreenQuad = glShader(
+  "v",
+  `
+void main() {
+  int i = gl_VertexID;
+  gl_Position = vec4(vec2(i%2*2-1, 1-(i+1)%4/2*2), 0., 1.);
+}`
+);
 
-  useGL(gl);
+const buffersNumber = 2;
+let textures = [0, 1].map(side => [...new Array(buffersNumber)].map((_, i) => glTexture(canvasWidth, canvasHeight)))
+let buffers = textures.map(textures => glFramebuffer(textures))
 
+let t = 0;
 
-
-  const vFullScreenQuad = createShader(
-    "v",
-    ``,
-    `
-int i = gl_VertexID;
-gl_Position = vec4(vec2(i%2*2-1, 1-(i+1)%4/2*2), 0., 1.);
+let p = glCompile(
+  vFullScreenQuad,
+  glShader(
+    "f", `
+${shaders.gradient}
+${shaders.main}
 `
-  );
+  )
+);
 
-  let tx = createTexture([canvasWidth, canvasHeight]);
-  let buffer = createBuffer(tx);
+gl.useProgram(p);
+let pUniform = glUniforms(p);
 
-  let tx2 = createTexture([canvasWidth, canvasHeight]);
-  let buffer2 = createBuffer(tx2);
+function loop() {
+  pUniform.t(t);
+  pUniform.screen(0);
 
-  let t = 0;
+  glBindTextures(textures[0], p);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, buffers[1]);
+  gl.drawBuffers([
+    gl.COLOR_ATTACHMENT0,
+    gl.COLOR_ATTACHMENT1
+  ]);
+  glDrawQuad();
 
-  let p = compileProgram(
-    vFullScreenQuad,
-    createShader(
-      "f", `
-uniform sampler2D T;
-uniform float t;
-out vec4 c;`,
-      `
-ivec2 F=ivec2(gl_FragCoord.xy);
-c=texelFetch(T,F,0);
-float m=c.g,n=-m;
-for(int i=0;i<9;i++)
-  n+=texelFetch(T,F+ivec2(i%3-1,i/3-1),0).g;
-  c.gra=vec3(
-    n==3.||m==1.&&(n==2. || n == 6.)||abs(atan(float(F.y-${canvasHeight / 2}),
-    float(F.x-${canvasWidth / 2}))-mod(t/5e2,6.28)+3.14)<2e-4?1:0,
-    max(c.g,c.r*.9),1
-  );
-`
-    )
-  );
-  gl.useProgram(p);
+  pUniform.screen(1);
+  glBindTextures(textures[1], p);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  glDrawQuad();
 
-  let uniform = uniforms(p);
+  buffers = buffers.reverse();
+  textures = textures.reverse();
 
-  let interval: number;
-
-  window.onclick = () => {
-    clearInterval(interval);
-    interval = setInterval((_) => {
-      gl.uniform1f(uniform["t"], t);
-      draw(tx, buffer2);
-
-      [buffer, buffer2] = [buffer2, buffer];
-      [tx, tx2] = [tx2, tx];
-
-      draw(tx);
-      t++;
-
-      if (t > 100)
-        clearInterval(interval);
-    }, 50);
-  }
-
-
+  t++;
 }
 
-main();
+window.onclick = loop;
+
+loop();
