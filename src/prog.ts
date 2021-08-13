@@ -1,60 +1,62 @@
 //@ts-check  
 
-import { gl, glFramebuffer, glCompile, glShader, glUniforms, glBindTextures, glTexture, glContext, TRIANGLES, glDrawQuad } from "./gllib"
+import { COLOR_ATTACHMENT0, COLOR_ATTACHMENT1, COLOR_ATTACHMENT2, DEPTH_BUFFER_BIT, FRAGMENT_SHADER, FRAMEBUFFER, RENDERBUFFER, TEXTURE_2D, VERTEX_SHADER } from "./glconsts";
+import { gl, glFramebuffer, glCompile, gl2Shader, glUniforms, glBindTextures, glTexture, glContext, glDrawQuad, TEX_RGBA16F, TEX_RGBA, glRenderbuffer, TEX_DEPTHF, glShowErrors, TEX_DEPTH_STENCILF, TEX_DEPTH, TEX_DEPTHI, TEX_DEPTHS, readTextureData } from "./gllib"
 import shaders from "./shaders"
+import {mSet} from "./math3d";
 
-const canvasWidth = 800, canvasHeight = 800;
+console.log("mset", mSet([1,2,3], {1:5}));
 
-C.width = canvasWidth;
-C.height = canvasHeight;
+const width = 800, height = 800;
+
+C.width = width;
+C.height = height;
 
 glContext(C);
 
 gl.getExtension('EXT_color_buffer_float');
 
-const vFullScreenQuad = glShader(
-  "v",
+const vFullScreenQuad = gl2Shader(
+  VERTEX_SHADER,
   `
 void main() {
   int i = gl_VertexID;
-  gl_Position = vec4(vec2(i%2*2-1, 1-(i+1)%4/2*2), 0., 1.);
+  gl_Position = vec4(i%2*2-1, 1-(i+1)%4/2*2, float(i%2*2-1)*2.+1., 1.);
 }`
 );
 
-const buffersNumber = 2;
-let textures = [0, 1].map(side => [...new Array(buffersNumber)].map((_, i) => glTexture(canvasWidth, canvasHeight)))
+let textures = [0, 1].map(_ => [TEX_RGBA, TEX_RGBA, TEX_DEPTHS].map(
+  (tex) => glTexture(width, height, tex)
+))
 let buffers = textures.map(textures => glFramebuffer(textures))
 
 let t = 0;
 
-let p = glCompile(
-  vFullScreenQuad,
-  glShader(
-    "f", `
-${shaders.gradient}
-${shaders.main}
-`
-  )
-);
+let pm = glCompile(vFullScreenQuad, gl2Shader(FRAGMENT_SHADER, `${shaders.gradient}\n${shaders.main}`));
+let pmUniform = glUniforms(pm);
 
-gl.useProgram(p);
-let pUniform = glUniforms(p);
+let ps = glCompile(vFullScreenQuad, gl2Shader(FRAGMENT_SHADER, shaders.screen));
+let psUniform = glUniforms(ps);
 
 function loop() {
-  pUniform.t(t);
-  pUniform.screen(0);
+  gl.useProgram(pm);
+  
+  pmUniform.t(t);
 
-  glBindTextures(textures[0], p);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, buffers[1]);
+  gl.bindFramebuffer(FRAMEBUFFER, buffers[1]);
   gl.drawBuffers([
-    gl.COLOR_ATTACHMENT0,
-    gl.COLOR_ATTACHMENT1
+    COLOR_ATTACHMENT0,
+    COLOR_ATTACHMENT1
   ]);
+  gl.clear(DEPTH_BUFFER_BIT);
   glDrawQuad();
 
-  pUniform.screen(1);
-  glBindTextures(textures[1], p);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.useProgram(ps);
+
+  glBindTextures(textures[1], [psUniform.T0, psUniform.T1, psUniform.Depth]);
+  
+  gl.bindFramebuffer(FRAMEBUFFER, null);
+
   glDrawQuad();
 
   buffers = buffers.reverse();
